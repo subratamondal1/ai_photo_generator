@@ -2,23 +2,21 @@ import os
 import io
 import warnings
 from PIL import Image
+import time
+import requests
+import json
+from io import BytesIO
 
 from stability_sdk import client
 import stability_sdk.interfaces.gooseai.generation.generation_pb2 as generation
 import streamlit as st
 
-# Initialize the Stability API client
-stability_api = client.StabilityInference(
-    key=os.getenv("STABILITY_API_KEY"),  # Replace with your Stability API key
-    verbose=True,
-)
 
-
-def app():
-    st.markdown("<center><h1>AI PHOTO GENERATOR</h1></center>",
-                unsafe_allow_html=True)
-    st.sidebar.image("logo.jpg")
-
+def generate_with_stabilityai(api=None):
+    stability_api = client.StabilityInference(
+        key=os.getenv("STABILITY_API_KEY"),
+        verbose=True,
+    )
     # User inputs for image generation parameters
     default_prompt = """Expansive landscape rolling greens with gargantuan yggdrasil, intricate world-spanning roots towering under a blue alien sky, masterful."""
     prompt = st.text_area(
@@ -100,6 +98,7 @@ def app():
 
     if generate_button:
         st.session_state.cancel = False
+
         with st.spinner("Generating..."):
             answers = stability_api.generate(prompt=prompt,
                                              seed=seed,
@@ -130,12 +129,96 @@ def app():
                                            file_name="generated_image.png",
                                            mime="image/png")
 
-    # Footer at the bottom of the sidebar
-    st.sidebar.markdown("---")
-    st.sidebar.info(
-        "**Feedback & Suggestions** [subratasubha2@gmail.com](mailto:subratasubha2@gmail.com)"
-    )
 
+def generate_with_leonardoai(api_key=None):
+    base_url = "https://cloud.leonardo.ai/api/rest/v1"
+    api_key = os.getenv("LEONARDO_API_KEY")
 
-if __name__ == "__main__":
-    app()
+    headers = {
+        "accept": "application/json",
+        "authorization": f"Bearer {api_key}",
+        "content-type": "application/json"
+    }
+
+    default_prompt = """Expansive landscape rolling greens with gargantuan yggdrasil, intricate world-spanning roots towering under a blue alien sky, masterful."""
+
+    prompt = st.text_area(
+        "Prompt",
+        value=default_prompt,
+        placeholder=default_prompt,
+        help="A detailed description of the image you want to generate.")
+
+    height = st.sidebar.number_input("Height", value=1024, step=64)
+    width = st.sidebar.number_input("Width", value=1024, step=64)
+
+    payload = {
+        "height": height,
+        "modelId": "6bef9f1b-29cb-40c7-b9df-32b51c1f67d3",
+        "prompt": prompt,
+        "width": width
+    }
+
+    generate_button = st.button("Generate Image")
+
+    if generate_button:
+        with st.spinner("Generating..."):
+            # Step 1: Initiate image generation
+            response = requests.post(f"{base_url}/generations",
+                                     headers=headers,
+                                     json=payload)
+
+            if response.status_code == 200:
+                generation_data = response.json()
+                # st.write("Generation initiated:", generation_data)
+
+                generation_id = generation_data["sdGenerationJob"][
+                    "generationId"]
+
+                # Step 2: Check generation status and retrieve image URL
+                max_attempts = 30
+                for attempt in range(max_attempts):
+                    status_response = requests.get(
+                        f"{base_url}/generations/{generation_id}",
+                        headers=headers)
+
+                    if status_response.status_code == 200:
+                        status_data = status_response.json()
+                        # st.write(f"Generation status (attempt {attempt + 1}):",
+                        #          status_data)
+
+                        if status_data["generations_by_pk"][
+                                "status"] == "COMPLETE":
+                            image_url = status_data["generations_by_pk"][
+                                "generated_images"][0]["url"]
+                            # st.write("Image URL:", image_url)
+
+                            # Download and display the image
+                            image_response = requests.get(image_url)
+                            if image_response.status_code == 200:
+                                image = Image.open(
+                                    BytesIO(image_response.content))
+                                st.image(image,
+                                         caption="Generated Image",
+                                         use_column_width=True)
+                            else:
+                                st.error("Failed to download the image.")
+
+                            break
+                        elif status_data["generations_by_pk"][
+                                "status"] == "FAILED":
+                            st.error("Image generation failed.")
+                            break
+                    else:
+                        st.error(
+                            f"Failed to check generation status: {status_response.status_code}"
+                        )
+                        break
+
+                    time.sleep(2)  # Wait for 2 seconds before checking again
+                else:
+                    st.error(
+                        "Timed out waiting for image generation to complete.")
+            else:
+                st.error(
+                    f"Failed to initiate generation: {response.status_code}")
+                st.text("Response content: " + response.content.decode())
