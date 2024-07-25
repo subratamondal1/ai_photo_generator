@@ -13,10 +13,17 @@ import streamlit as st
 
 
 def generate_with_stabilityai(api=None):
-    stability_api = client.StabilityInference(
-        key=os.getenv("STABILITY_API_KEY"),
-        verbose=True,
-    )
+    if api:
+        stability_api = client.StabilityInference(
+            key=api,
+            verbose=True,
+        )
+    else:
+        stability_api = client.StabilityInference(
+            key=os.getenv("STABILITY_API_KEY"),
+            verbose=True,
+        )
+
     # User inputs for image generation parameters
     default_prompt = """Expansive landscape rolling greens with gargantuan yggdrasil, intricate world-spanning roots towering under a blue alien sky, masterful."""
     prompt = st.text_area(
@@ -132,7 +139,10 @@ def generate_with_stabilityai(api=None):
 
 def generate_with_leonardoai(api_key=None):
     base_url = "https://cloud.leonardo.ai/api/rest/v1"
-    api_key = os.getenv("LEONARDO_API_KEY")
+    if api_key:
+        api_key = api_key
+    else:
+        api_key = os.getenv("LEONARDO_API_KEY")
 
     headers = {
         "accept": "application/json",
