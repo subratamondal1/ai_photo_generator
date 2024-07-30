@@ -2,4 +2,6 @@
     AI PHOTO GENERATOR
 </h1>
 
-`Using Stable Diffusion API to generate and enhance photo of the users!!!`
+`Using StabilityAI and LeonardoAI to generate and enhance photo of the users!!!`
+
+<img src="image1.png"/>
